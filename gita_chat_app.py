@@ -5,6 +5,8 @@ from llama_index.llms.gemini import Gemini
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.core.chat_engine import CondenseQuestionChatEngine
 from llama_index.core.memory import ChatMemoryBuffer
+# CRITICAL IMPORT for Memory Synchronization
+from llama_index.core.llms import ChatMessage, MessageRole 
 
 # --- CONFIGURATION ---
 INDEX_DIR = "index_storage"
@@ -57,6 +59,7 @@ def initialize_chat_pipeline():
     # 5. Create the Chat Engine
     st.write("Creating chat engine...")
     chat_engine = CondenseQuestionChatEngine.from_defaults(
+        # Use index.as_query_engine() directly for the CondenseQuestionChatEngine
         query_engine=index.as_query_engine(), 
         memory=memory,
         system_prompt=(
@@ -84,26 +87,48 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- 3. HANDLE USER INPUT ---
+# --- 3. HANDLE USER INPUT (WITH MEMORY SYNCHRONIZATION) ---
 
 if prompt := st.chat_input("Ask a question about a verse, chapter, or concept..."):
-    # Add user message to history
+    # 1. Add user message to history and display
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Generate response
+    # 2. Generate response from the RAG engine
     with st.chat_message("assistant"):
         with st.spinner("Meditating on the answer..."):
             try:
-                # Use the chat engine with history
+                # --- CRITICAL MEMORY SYNCHRONIZATION ---
+                # 2a. Reset the engine's memory buffer
+                chat_engine.memory.reset() 
+
+                # 2b. Re-load the Streamlit history into the LlamaIndex memory buffer
+                for message in st.session_state.messages:
+                    if message["role"] == "user":
+                        # Note: We skip the *last* user message as it is the current prompt
+                        # which the chat_engine handles when .chat(prompt) is called.
+                        # However, for robustness in this simple loop, we include it, 
+                        # and the CondenseQuestionChatEngine handles duplicate context.
+                        chat_engine.memory.put(
+                            ChatMessage(role=MessageRole.USER, content=message["content"])
+                        )
+                    elif message["role"] == "assistant":
+                        chat_engine.memory.put(
+                            ChatMessage(role=MessageRole.ASSISTANT, content=message["content"])
+                        )
+                # Note: The ChatEngine automatically handles the new 'prompt' provided to the .chat() method.
+                
+                # 2c. Run the LlamaIndex chat
                 response = chat_engine.chat(prompt)
                 
+                # 2d. Display the response and sources
                 st.markdown(response.response)
                 
                 if response.source_nodes:
                     st.info(f"Source Verse: **{response.source_nodes[0].metadata.get('chapter_verse', 'N/A')}**")
                     
+                # 3. Add assistant message to history
                 st.session_state.messages.append({"role": "assistant", "content": response.response})
                 
             except Exception as e:
