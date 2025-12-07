@@ -4,21 +4,8 @@ from llama_index.core import StorageContext, load_index_from_storage, Settings
 from llama_index.llms.gemini import Gemini
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 
-# Configure the LLM using Streamlit Secrets
-try:
-    # 1. Access the API key from Streamlit secrets
-    api_key = st.secrets["GEMINI_API_KEY"]
-except KeyError:
-    # Fallback for local testing or if the secret isn't set
-    st.error("GEMINI_API_KEY not found in secrets. Please set it up.")
-    st.stop()
-
-# 2. Initialize the LLM with the API key and a suitable model
-llm = Gemini(model="gemini-2.5-flash", api_key=api_key)
-
 # --- CONFIGURATION ---
 INDEX_DIR = "index_storage"
-OLLAMA_MODEL = "llama3:8b-instruct-q4_0"
 
 # --- 1. SETUP AND INITIALIZATION ---
 
@@ -30,31 +17,40 @@ st.title("🕉️ Bhagavad Gita Scholar")
 if not os.path.exists(INDEX_DIR):
     st.error(
         f"Error: Index storage directory '{INDEX_DIR}' not found. "
-        "Please run `build_index.py` first to create the RAG index."
+        "Please ensure your index is located in the root of your project on GitHub."
     )
     st.stop()
     
 # Function to initialize the RAG pipeline (runs only once)
 @st.cache_resource(show_spinner=True)
 def initialize_rag_pipeline():
-    # 1. Configure the Embedding Model (Must match index builder)
+    # Configure the LLM using Streamlit Secrets
+    try:
+        # 1. Access the API key from Streamlit secrets
+        api_key = st.secrets["GEMINI_API_KEY"]
+    except KeyError:
+        # Halt deployment if the secret is missing
+        st.error("GEMINI_API_KEY not found in Streamlit secrets. Please configure it in the 'Manage app' settings.")
+        st.stop()
+    
+    # 2. Configure the Embedding Model (Must match index builder)
     st.write("Loading embedding model...")
-    embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    Settings.embed_model = embed_model
+    Settings.embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2", device="cpu")
 
-    # 2. Configure the LLM (Ollama)
-    st.write(f"Connecting to Ollama ({OLLAMA_MODEL})...")
-    Settings.llm = Ollama(
-        model=OLLAMA_MODEL,
+    # 3. Configure the LLM (Gemini Cloud API)
+    st.write("Connecting to Gemini Cloud API...")
+    Settings.llm = Gemini(
+        model="gemini-2.5-flash",
+        api_key=api_key, # Use the retrieved secret
         request_timeout=120
     )
     
-    # 3. Load the Index from Storage
+    # 4. Load the Index from Storage
     st.write("Loading vector index...")
     storage_context = StorageContext.from_defaults(persist_dir=INDEX_DIR)
     index = load_index_from_storage(storage_context)
 
-    # 4. Create the Query Engine (with a system prompt for good style)
+    # 5. Create the Query Engine
     st.write("Creating query engine...")
     query_engine = index.as_query_engine(
         system_prompt=(
@@ -106,6 +102,7 @@ if prompt := st.chat_input("Ask a question about a verse, chapter, or concept...
                 st.session_state.messages.append({"role": "assistant", "content": response.response})
                 
             except Exception as e:
-                error_msg = f"An error occurred during query: {e}. Check if your Ollama server is running."
+                # Removed reference to Ollama in error message
+                error_msg = f"An error occurred during query: {e}."
                 st.error(error_msg)
                 st.session_state.messages.append({"role": "assistant", "content": error_msg})
