@@ -79,15 +79,19 @@ def create_chat_engine_with_history(retriever, system_prompt, history_messages):
         llama_history.append(ChatMessage(role=role, content=message["content"]))
 
     # 2. Initialize Memory Buffer *with the pre-loaded history*
-    # This forces the engine to start with the full history every time.
-    memory = ChatMemoryBuffer.from_defaults(chat_history=llama_history, token_limit=3900)
+    # CRITICAL FIX: Explicitly pass the LLM instance to the memory buffer.
+    memory = ChatMemoryBuffer.from_defaults(
+        chat_history=llama_history, 
+        token_limit=3900, 
+        llm=Settings.llm  # <--- NEW ARGUMENT!
+    )
     
     # 3. Create the ContextChatEngine
     chat_engine = ContextChatEngine.from_defaults(
         retriever=retriever,
         memory=memory,
         system_prompt=system_prompt,
-        llm=Settings.llm # Settings.llm is defined globally and available
+        llm=Settings.llm 
     )
     return chat_engine
 
