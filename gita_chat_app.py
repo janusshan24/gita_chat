@@ -35,18 +35,16 @@ if not os.path.exists(INDEX_DIR):
     st.stop()
     
 # Function to initialize the RAG pipeline (runs only once)
-@st.cache_resource(show_spinner=True)
+@st.cache_resource(show_spinner=False)
 def initialize_rag_pipeline():
-    # 1. Configure the Embedding Model (Must match index builder)
-    st.write("Loading embedding model...")
-    embed_model = HuggingFaceEmbedding(model_name="sentence-transformers/all-MiniLM-L6-v2")
-    Settings.embed_model = embed_model
+    # 1. Access the API key securely
+    gemini_api_key = st.secrets["GEMINI_API_KEY"]
 
-    # 2. Configure the LLM (Ollama)
-    st.write(f"Connecting to Ollama ({OLLAMA_MODEL})...")
-    Settings.llm = Ollama(
-        model=OLLAMA_MODEL,
-        request_timeout=120
+    # 2. Configure the LLM using the correct class and API key
+    Settings.llm = Gemini(
+        model="gemini-2.5-flash", 
+        api_key=gemini_api_key, # Pass the key here
+        request_timeout=120.0
     )
     
     # 3. Load the Index from Storage
