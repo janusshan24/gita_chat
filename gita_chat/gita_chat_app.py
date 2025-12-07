@@ -38,7 +38,6 @@ def initialize_rag_components():
         st.stop()
         
     st.write("Connecting to Gemini Cloud API...")
-    # Using GoogleGenAI to fix the DeprecationWarning
     Settings.llm = GoogleGenAI(
         model="gemini-2.5-flash", 
         api_key=api_key,
