@@ -3,6 +3,8 @@ import os
 from llama_index.core import StorageContext, load_index_from_storage, Settings
 from llama_index.llms.gemini import Gemini
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from llama_index.core.chat_engine import CondenseQuestionChatEngine # Import the chat engine
+from llama_index.core.memory import ChatMemoryBuffer # Import a basic memory buffer
 
 # Configure the LLM using Streamlit Secrets
 try:
@@ -35,38 +37,27 @@ if not os.path.exists(INDEX_DIR):
     st.stop()
     
 # Function to initialize the RAG pipeline (runs only once)
-@st.cache_resource(show_spinner=False)
+@st.cache_resource(show_spinner=True)
 def initialize_rag_pipeline():
-    # 1. Access the API key securely
-    gemini_api_key = st.secrets["GEMINI_API_KEY"]
-
-    # 2. Configure the LLM using the correct class and API key
-    Settings.llm = Gemini(
-        model="gemini-2.5-flash", 
-        api_key=gemini_api_key, # Pass the key here
-        request_timeout=120.0
-    )
-
-    Settings.embed_model = HuggingFaceEmbedding(
-        model_name="BAAI/bge-small-en-v1.5", 
-        device="cpu" 
-    )
+    # ... (Steps 1, 2, 3 remain the same: configure embeddings, LLM, and load index)
     
-    # 3. Load the Index from Storage
-    st.write("Loading vector index...")
-    storage_context = StorageContext.from_defaults(persist_dir=INDEX_DIR)
-    index = load_index_from_storage(storage_context)
-
-    # 4. Create the Query Engine (with a system prompt for good style)
-    st.write("Creating query engine...")
-    query_engine = index.as_query_engine(
+    # 4. Initialize Memory Buffer (required for ChatEngine)
+    memory = ChatMemoryBuffer.from_defaults(token_limit=3900) # Set a token limit for the history
+    
+    # 5. Create the Chat Engine (with memory and system prompt)
+    st.write("Creating chat engine...")
+    chat_engine = CondenseQuestionChatEngine.from_defaults(
+        index=index,
+        memory=memory,
         system_prompt=(
             "You are a wise and objective scholar specializing in the Bhagavad Gita. "
+            "Maintain a continuous conversation, referencing previous turns. "
             "Answer the user's question based ONLY on the provided context (Sanskrit verse, translation, and purport). "
-            "Render all Sanskrit diacritics correctly (e.g., Kṛṣṇa, dharma-kṣetra) and do not use corrupted characters."
+            "Render all Sanskrit diacritics correctly (e.g., Kṛṣṇa, dharma-kṣetra)."
         ),
     )
-    return query_engine
+    # Change: return the chat_engine
+    return chat_engine
 
 # Initialize the query engine and store it in session state
 query_engine = initialize_rag_pipeline()
@@ -96,8 +87,7 @@ if prompt := st.chat_input("Ask a question about a verse, chapter, or concept...
         with st.spinner("Meditating on the answer..."):
             try:
                 # Run the LlamaIndex query
-                response = query_engine.query(prompt)
-                
+                response = query_engine.chat(prompt)
                 # Display the response
                 st.markdown(response.response)
                 
