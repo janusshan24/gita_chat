@@ -1,9 +1,9 @@
 import streamlit as st
 import os
 from llama_index.core import StorageContext, load_index_from_storage, Settings
-from llama_index.llms.gemini import Gemini
+from llama_index.llms.google_genai import GoogleGenAI
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-from llama_index.core.chat_engine import CondenseQuestionChatEngine
+from llama_index.core.chat_engine import ContextChatEngine
 from llama_index.core.memory import ChatMemoryBuffer
 # CRITICAL IMPORT for Memory Synchronization
 from llama_index.core.llms import ChatMessage, MessageRole 
@@ -35,7 +35,7 @@ def initialize_chat_pipeline():
         st.stop()
         
     st.write("Connecting to Gemini Cloud API...")
-    Settings.llm = Gemini(
+    Settings.llm = GoogleGenAI(
         model="gemini-2.5-flash", 
         api_key=api_key,
         request_timeout=120
@@ -56,11 +56,15 @@ def initialize_chat_pipeline():
     # 4. Initialize Memory Buffer
     memory = ChatMemoryBuffer.from_defaults(token_limit=3900)
     
-    # 5. Create the Chat Engine
+    # 5. Create the Chat Engine (CRITICAL CHANGE HERE)
     st.write("Creating chat engine...")
-    chat_engine = CondenseQuestionChatEngine.from_defaults(
-        # Use index.as_query_engine() directly for the CondenseQuestionChatEngine
-        query_engine=index.as_query_engine(), 
+    
+    # Get the retriever from the index
+    retriever = index.as_retriever(similarity_top_k=3) # Use top_k=3 for good context
+    
+    chat_engine = ContextChatEngine.from_defaults(
+        # The ContextChatEngine takes a retriever, not a query_engine
+        retriever=retriever,
         memory=memory,
         system_prompt=(
             "You are a wise and objective scholar specializing in the Bhagavad Gita. "
@@ -68,7 +72,7 @@ def initialize_chat_pipeline():
             "Answer the user's question based ONLY on the provided context (Sanskrit verse, translation, and purport). "
             "Render all Sanskrit diacritics correctly (e.g., Kṛṣṇa, dharma-kṣetra)."
         ),
-        verbose=True
+        llm=Settings.llm # Explicitly pass the LLM for clarity
     )
     return chat_engine
 
