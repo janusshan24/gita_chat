@@ -1,11 +1,14 @@
 import streamlit as st
 import os
+# LlamaIndex Core Components
 from llama_index.core import StorageContext, load_index_from_storage, Settings
+# Updated LLM and Embedding Modules
 from llama_index.llms.google_genai import GoogleGenAI
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+# Chat Engine Components
 from llama_index.core.chat_engine import ContextChatEngine
 from llama_index.core.memory import ChatMemoryBuffer
-# CRITICAL IMPORT for Memory Synchronization
+# CRITICAL IMPORTS for Memory Synchronization
 from llama_index.core.llms import ChatMessage, MessageRole 
 
 # --- CONFIGURATION ---
@@ -24,9 +27,9 @@ if not os.path.exists(INDEX_DIR):
     )
     st.stop()
 
-# Function to initialize the RAG pipeline (runs only once)
+# Function to initialize RAG components (runs only once)
 @st.cache_resource(show_spinner=True)
-def initialize_chat_pipeline():
+def initialize_rag_components():
     # 1. Configure Secrets & LLM
     try:
         api_key = st.secrets["GEMINI_API_KEY"]
@@ -35,6 +38,7 @@ def initialize_chat_pipeline():
         st.stop()
         
     st.write("Connecting to Gemini Cloud API...")
+    # Using GoogleGenAI to fix the DeprecationWarning
     Settings.llm = GoogleGenAI(
         model="gemini-2.5-flash", 
         api_key=api_key,
@@ -53,31 +57,43 @@ def initialize_chat_pipeline():
     storage_context = StorageContext.from_defaults(persist_dir=INDEX_DIR)
     index = load_index_from_storage(storage_context)
 
-    # 4. Initialize Memory Buffer
-    memory = ChatMemoryBuffer.from_defaults(token_limit=3900)
+    # CRITICAL CHANGE: Return components needed to build the engine dynamically
+    retriever = index.as_retriever(similarity_top_k=3)
+    system_prompt = (
+        "You are a wise and objective scholar specializing in the Bhagavad Gita. "
+        "Maintain a continuous conversation, referencing previous turns. "
+        "Answer the user's question based ONLY on the provided context (Sanskrit verse, translation, and purport). "
+        "Render all Sanskrit diacritics correctly (e.g., Kṛṣṇa, dharma-kṣetra)."
+    )
     
-    # 5. Create the Chat Engine (CRITICAL CHANGE HERE)
-    st.write("Creating chat engine...")
+    # Return the necessary pieces
+    return index, retriever, system_prompt
+
+# Helper function to create the ChatEngine dynamically with history
+def create_chat_engine_with_history(retriever, system_prompt, history_messages):
+    """Dynamically creates a new ContextChatEngine, loading all history."""
     
-    # Get the retriever from the index
-    retriever = index.as_retriever(similarity_top_k=3) # Use top_k=3 for good context
+    # 1. Convert Streamlit history to LlamaIndex ChatMessage format
+    llama_history = []
+    for message in history_messages:
+        role = MessageRole.USER if message["role"] == "user" else MessageRole.ASSISTANT
+        llama_history.append(ChatMessage(role=role, content=message["content"]))
+
+    # 2. Initialize Memory Buffer *with the pre-loaded history*
+    # This forces the engine to start with the full history every time.
+    memory = ChatMemoryBuffer.from_defaults(chat_history=llama_history, token_limit=3900)
     
+    # 3. Create the ContextChatEngine
     chat_engine = ContextChatEngine.from_defaults(
-        # The ContextChatEngine takes a retriever, not a query_engine
         retriever=retriever,
         memory=memory,
-        system_prompt=(
-            "You are a wise and objective scholar specializing in the Bhagavad Gita. "
-            "Maintain a continuous conversation, referencing previous turns. "
-            "Answer the user's question based ONLY on the provided context (Sanskrit verse, translation, and purport). "
-            "Render all Sanskrit diacritics correctly (e.g., Kṛṣṇa, dharma-kṣetra)."
-        ),
-        llm=Settings.llm # Explicitly pass the LLM for clarity
+        system_prompt=system_prompt,
+        llm=Settings.llm # Settings.llm is defined globally and available
     )
     return chat_engine
 
-# Initialize the chat engine
-chat_engine = initialize_chat_pipeline()
+# Initialize components once
+index, retriever, system_prompt = initialize_rag_components() 
 
 # Initialize chat history UI
 if "messages" not in st.session_state:
@@ -91,7 +107,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- 3. HANDLE USER INPUT (WITH MEMORY SYNCHRONIZATION) ---
+# --- 3. HANDLE USER INPUT (WITH MEMORY SYNCHRONIZATION VIA RE-INITIALIZATION) ---
 
 if prompt := st.chat_input("Ask a question about a verse, chapter, or concept..."):
     # 1. Add user message to history and display
@@ -103,31 +119,26 @@ if prompt := st.chat_input("Ask a question about a verse, chapter, or concept...
     with st.chat_message("assistant"):
         with st.spinner("Meditating on the answer..."):
             try:
-                # 2a. Build the LlamaIndex ChatMessage list from Streamlit history
-                llama_history = []
-                for message in st.session_state.messages:
-                    # Map Streamlit role to LlamaIndex MessageRole
-                    role = MessageRole.USER if message["role"] == "user" else MessageRole.ASSISTANT
-                    # Append all messages, including the current user prompt, to the history list
-                    llama_history.append(ChatMessage(role=role, content=message["content"]))
+                # --- CRITICAL FIX: RE-INITIALIZE THE ENGINE WITH HISTORY ---
+                # A new chat engine is built on every turn, forcing it to load the history
+                chat_engine = create_chat_engine_with_history(
+                    retriever, 
+                    system_prompt, 
+                    st.session_state.messages
+                )
 
-                # 2b. Set the chat engine's history directly
-                # This public method resets and updates the internal memory buffer
-                # and avoids touching the problematic `.memory` attribute.
-                chat_engine.set_chat_history(llama_history)
+                # 3. Run the LlamaIndex chat
+                # Pass an empty string, as the full history (including the current prompt) 
+                # has already been loaded into the engine's memory buffer.
+                response = chat_engine.chat("") 
                 
-                # 2c. Run the LlamaIndex chat (It now has the full, updated history)
-                # Note: Because we passed the current prompt in the history list above, 
-                # LlamaIndex will process the last element as the current user input.
-                response = chat_engine.chat("") # Pass an empty string here, as the prompt is already in the history.
-                
-                # 2d. Display the response and sources
+                # 4. Display the response and sources
                 st.markdown(response.response)
                 
                 if response.source_nodes:
                     st.info(f"Source Verse: **{response.source_nodes[0].metadata.get('chapter_verse', 'N/A')}**")
                     
-                # 3. Add assistant message to history
+                # 5. Add assistant message to history
                 st.session_state.messages.append({"role": "assistant", "content": response.response})
                 
             except Exception as e:
