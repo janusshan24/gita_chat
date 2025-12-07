@@ -103,20 +103,23 @@ if prompt := st.chat_input("Ask a question about a verse, chapter, or concept...
     with st.chat_message("assistant"):
         with st.spinner("Meditating on the answer..."):
             try:
-                # --- CRITICAL MEMORY FIX ---
-                # 2a. Reset the engine's internal memory buffer (Now accessed correctly)
-                # The ContextChatEngine's memory object is accessed via the 'memory' attribute
-                # of the engine, which has the 'reset' method.
-                chat_engine.memory.reset() 
-
-                # 2b. Re-load the Streamlit history into the LlamaIndex memory buffer
-                # Access the internal history list of the memory object to fill it
+                # 2a. Build the LlamaIndex ChatMessage list from Streamlit history
+                llama_history = []
                 for message in st.session_state.messages:
+                    # Map Streamlit role to LlamaIndex MessageRole
                     role = MessageRole.USER if message["role"] == "user" else MessageRole.ASSISTANT
-                    chat_engine.memory.put(ChatMessage(role=role, content=message["content"]))
+                    # Append all messages, including the current user prompt, to the history list
+                    llama_history.append(ChatMessage(role=role, content=message["content"]))
+
+                # 2b. Set the chat engine's history directly
+                # This public method resets and updates the internal memory buffer
+                # and avoids touching the problematic `.memory` attribute.
+                chat_engine.set_chat_history(llama_history)
                 
-                # 2c. Run the LlamaIndex chat
-                response = chat_engine.chat(prompt)
+                # 2c. Run the LlamaIndex chat (It now has the full, updated history)
+                # Note: Because we passed the current prompt in the history list above, 
+                # LlamaIndex will process the last element as the current user input.
+                response = chat_engine.chat("") # Pass an empty string here, as the prompt is already in the history.
                 
                 # 2d. Display the response and sources
                 st.markdown(response.response)
