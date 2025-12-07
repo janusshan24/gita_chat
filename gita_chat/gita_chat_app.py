@@ -67,7 +67,7 @@ query_engine = initialize_rag_pipeline()
 # Initialize chat history
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "Welcome! I am a RAG scholar of the Bhagavad Gita. How can I help you today?"}
+        {"role": "assistant", "content": "Welcome! I'm here to help you explore the Bhagavad-gītā, Śrīmad Bhāgavatam, and Caitanya-caritāmṛta. How can I assist your study today?"}
     ]
 
 # --- 2. DISPLAY CHAT HISTORY ---
