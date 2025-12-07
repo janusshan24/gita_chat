@@ -103,25 +103,17 @@ if prompt := st.chat_input("Ask a question about a verse, chapter, or concept...
     with st.chat_message("assistant"):
         with st.spinner("Meditating on the answer..."):
             try:
-                # --- CRITICAL MEMORY SYNCHRONIZATION ---
-                # 2a. Reset the engine's memory buffer
+                # --- CRITICAL MEMORY FIX ---
+                # 2a. Reset the engine's internal memory buffer (Now accessed correctly)
+                # The ContextChatEngine's memory object is accessed via the 'memory' attribute
+                # of the engine, which has the 'reset' method.
                 chat_engine.memory.reset() 
 
                 # 2b. Re-load the Streamlit history into the LlamaIndex memory buffer
+                # Access the internal history list of the memory object to fill it
                 for message in st.session_state.messages:
-                    if message["role"] == "user":
-                        # Note: We skip the *last* user message as it is the current prompt
-                        # which the chat_engine handles when .chat(prompt) is called.
-                        # However, for robustness in this simple loop, we include it, 
-                        # and the CondenseQuestionChatEngine handles duplicate context.
-                        chat_engine.memory.put(
-                            ChatMessage(role=MessageRole.USER, content=message["content"])
-                        )
-                    elif message["role"] == "assistant":
-                        chat_engine.memory.put(
-                            ChatMessage(role=MessageRole.ASSISTANT, content=message["content"])
-                        )
-                # Note: The ChatEngine automatically handles the new 'prompt' provided to the .chat() method.
+                    role = MessageRole.USER if message["role"] == "user" else MessageRole.ASSISTANT
+                    chat_engine.memory.put(ChatMessage(role=role, content=message["content"]))
                 
                 # 2c. Run the LlamaIndex chat
                 response = chat_engine.chat(prompt)
