@@ -46,6 +46,11 @@ def initialize_rag_pipeline():
         api_key=gemini_api_key, # Pass the key here
         request_timeout=120.0
     )
+
+    Settings.embed_model = HuggingFaceEmbedding(
+        model_name="BAAI/bge-small-en-v1.5", 
+        device="cpu" 
+    )
     
     # 3. Load the Index from Storage
     st.write("Loading vector index...")
