@@ -1,8 +1,20 @@
 import streamlit as st
 import os
 from llama_index.core import StorageContext, load_index_from_storage, Settings
-from llama_index.llms.ollama import Ollama
+from llama_index.llms.gemini import Gemini
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+
+# Configure the LLM using Streamlit Secrets
+try:
+    # 1. Access the API key from Streamlit secrets
+    api_key = st.secrets["GEMINI_API_KEY"]
+except KeyError:
+    # Fallback for local testing or if the secret isn't set
+    st.error("GEMINI_API_KEY not found in secrets. Please set it up.")
+    st.stop()
+
+# 2. Initialize the LLM with the API key and a suitable model
+llm = Gemini(model="gemini-2.5-flash", api_key=api_key)
 
 # --- CONFIGURATION ---
 INDEX_DIR = "index_storage"
