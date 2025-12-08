@@ -103,7 +103,7 @@ if prompt := st.chat_input("Ask a question about a verse, chapter, or concept...
                     top_score = response.source_nodes[0].score 
                     
                     # Set a relevance threshold. Adjust this value (e.g., 0.70 to 0.85) based on testing.
-                    RELEVANCE_THRESHOLD = 0.75 
+                    RELEVANCE_THRESHOLD = 0.6
                     
                     if top_score and top_score >= RELEVANCE_THRESHOLD:
                         # If the top score is high, assume it's a RAG question and display sources
