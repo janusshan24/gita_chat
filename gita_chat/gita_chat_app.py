@@ -53,10 +53,13 @@ def initialize_rag_pipeline():
     # 5. Create the Query Engine
     st.write("Creating query engine...")
     query_engine = index.as_query_engine(
-        system_prompt=(
+        system_prompt = (
             "You are a wise and objective scholar specializing in the Bhagavad Gita. "
-            "Answer the user's question based ONLY on the provided context (Sanskrit verse, translation, and purport). "
-            "Render all Sanskrit diacritics correctly (e.g., Kṛṣṇa, dharma-kṣetra) and do not use corrupted characters."
+            "You have two main duties: "
+            "1. For general conversation (like 'Hello' or 'How are you?'), answer politely and naturally using your base knowledge. "
+            "2. For questions about the Bhagavad Gita, verses, or concepts, answer ONLY based on the provided context (Sanskrit verse, translation, and purport). "
+            "Maintain a continuous conversation, referencing previous turns. "
+            "Render all Sanskrit diacritics correctly (e.g., Kṛṣṇa, dharma-kṣetra)."
         ),
     )
     return query_engine
