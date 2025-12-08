@@ -96,10 +96,33 @@ if prompt := st.chat_input("Ask a question about a verse, chapter, or concept...
                 
                 # Display the response
                 st.markdown(response.response)
-                
-                # Optionally display sources (very helpful for RAG)
+
+                # --- CRITICAL FIX: Add Relevance Filtering Here ---
                 if response.source_nodes:
-                    st.info(f"Source Verse: **{response.source_nodes[0].metadata.get('chapter_verse', 'N/A')}**")
+                    # Get the score of the most relevant node (the first one)
+                    top_score = response.source_nodes[0].score 
+                    
+                    # Set a relevance threshold. Adjust this value (e.g., 0.70 to 0.85) based on testing.
+                    RELEVANCE_THRESHOLD = 0.75 
+                    
+                    if top_score and top_score >= RELEVANCE_THRESHOLD:
+                        # If the top score is high, assume it's a RAG question and display sources
+                        
+                        # Display the source using st.expander for a clean UI (as suggested previously)
+                        metadata = response.source_nodes[0].metadata
+                        
+                        # Display a custom alert for the source
+                        st.info(f"Source Verse: **{metadata.get('chapter_verse', 'N/A')}** (Relevance: {top_score:.2f})")
+                        
+                        with st.expander("Show Detailed Source Context"):
+                            st.markdown(f"**Sanskrit:** {metadata.get('sanskrit', 'N/A')}")
+                            st.markdown(f"**Translation:** {metadata.get('translation', 'N/A')}")
+                            st.markdown("---")
+                            st.markdown(f"**Purport Snippet:** {response.source_nodes[0].get_text()[:300]}...")
+                            
+                    else:
+                        # If the score is too low, do NOT display any sources.
+                        st.caption("*(Answer provided using base knowledge.)*")
                     
                 # 3. Add assistant message to history
                 st.session_state.messages.append({"role": "assistant", "content": response.response})
